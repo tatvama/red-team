@@ -33,12 +33,21 @@ These come from spec sections 1.3, 1.4, 3.1 and 11. Each one is enforced in code
 6. **Network tools stay disabled** (`AUTO_TARGET_ACTIONS_ENABLED=false`) until M3 egress and denial tests pass.
 7. **Every PR tests both the success path and the denial path.**
 
+### 1.1 Carve-out: `apps/agent` (internal developer agent)
+
+Decided by the owner on 2026-10-10. `apps/agent` is a separate, self-hosted coding and research agent for the team's own development work (Tatvam Agent). It is **not** part of the assessment platform, and guardrails 1 to 6 above continue to apply in full to everything else in this repo. Within `apps/agent` only, a shell command runner (off by default), web search and fetch, and MCP client connections are allowed, under these boundaries:
+
+1. **No platform coupling.** `apps/agent` never imports from or calls `services/api`, `apps/web`, workers or the gateway, never stores scope documents, targets or evidence, and is never deployed into the assessment network.
+2. **Defaults stay closed.** Shell commands are off unless an operator sets `COMMAND_RUNNER`; side-effecting tools ask for approval; the API answers loopback hosts only unless `ALLOWED_HOSTS` and `ACCESS_TOKEN` are set.
+3. **No offensive capability.** The forbidden list in guardrail 5 still applies to the agent's built-in tools: it ships no exploitation, credential, evasion, persistence, lateral movement, exfiltration, scanning or destructive tooling.
+4. **Sensitive-path review.** `apps/agent/src/lib/server/tools/`, `apps/agent/src/lib/server/auth.ts`, `apps/agent/src/lib/server/git.ts`, `apps/agent/src/lib/server/mcp/`, `apps/agent/Dockerfile` and `apps/agent/deploy/` need the security reviewer's approval, like the paths in section 2.
+
 ---
 
 ## 2. Branch and worktree strategy
 
 - **`main`** is the integration branch. Protect it: PR required, CI green, one approving review.
-- **Sensitive paths** need a second review from a named security reviewer via `CODEOWNERS`: `services/api/app/policies/`, `tools/`, `workers/`, `auth/`, `infra/gateway/`, any compose file and any Dockerfile.
+- **Sensitive paths** need a second review from a named security reviewer via `CODEOWNERS`: `services/api/app/policies/`, `tools/`, `workers/`, `auth/`, `infra/gateway/`, any compose file and any Dockerfile, plus the `apps/agent` paths listed in section 1.1.
 - **Branch names:** `feat/m<N>-<slice>`, `docs/<topic>`, `fix/<topic>`, `sec/<topic>`.
 - **One worktree per active stream**, as siblings under `D:\Projects\red-team-worktrees\`. Sibling folders keep nested checkouts out of ruff, eslint and pytest discovery in the main checkout.
 - **One worktree is one vertical slice is one PR.** After merge, remove the worktree and delete the branch.
@@ -51,6 +60,7 @@ These come from spec sections 1.3, 1.4, 3.1 and 11. Each one is enforced in code
 | `red-team-worktrees/m0-scaffold` | `feat/m0-scaffold` | Monorepo tooling, CI, dev compose without workers | Root configs, `apps/web`, `services/api` skeleton, `infra/compose.dev.yaml`, `.github/` |
 | `red-team-worktrees/m0-threat-model` | `docs/m0-threat-model` | ADRs, threat model, trust diagram, control matrix, authorization template | `docs/` only |
 | `red-team-worktrees/policy-core` | `feat/policy-core` | Pure Policy Decision Point and the unit tests in spec 13.1 | `services/api/app/policies/`, `tests/unit/policies/` |
+| `red-team-worktrees/agent-app` | `feat/agent-app` | Internal developer agent (carve-out, section 1.1), added 2026-10-10 | `apps/agent/` |
 
 **Why start the policy core now.** It is the highest-risk component, it has no infrastructure dependency, and its tests are fully named in spec 13.1. It rebases onto `feat/m0-scaffold` after that merges, to pick up `pyproject.toml` and CI.
 

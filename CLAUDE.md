@@ -21,6 +21,7 @@ Tatvam AI Red Team is an authorized, scope-gated security assessment platform: e
 - Do not build exploitation, credential attacks, evasion, persistence, lateral movement, exfiltration, broad scanning or destructive testing. If a task appears to need one of these, stop and ask.
 - Keep `AUTO_TARGET_ACTIONS_ENABLED=false` and all network-contacting tools disabled until the M3 egress and denial tests pass.
 - Never commit secrets, real scope documents, customer names, internal hostnames or evidence. The GitHub repo may be public.
+- **Carve-out:** `apps/agent` is the internal developer agent, not the assessment platform. Only there are a shell runner (off by default), web tools and MCP connections allowed, under the boundaries in `docs/PLAN.md` section 1.1: no imports from or calls to platform code, no scope, target or evidence data, closed defaults, and no offensive tooling. Everything above still applies to the rest of the repo. See `apps/agent/CLAUDE.md` for its own rules and commands.
 
 ## Working agreement
 

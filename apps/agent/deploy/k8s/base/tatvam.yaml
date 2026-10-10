@@ -1,0 +1,164 @@
+# The agent. One replica only: conversations live in SQLite on the data volume and run locks are
+# in memory, so scaling out would split state.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: tatvam-config
+data:
+  GPU_BASE_URL: http://vllm:8000/v1
+  # In-cluster traffic to vLLM is restricted by NetworkPolicy; use a mesh with mTLS for encryption.
+  ALLOW_HTTP_MODEL_URLS: "true"
+  OLLAMA_BASE_URL: ""
+  CONTEXT_TOKENS: "60000"
+  MAX_OUTPUT_TOKENS: "8192"
+  AGENT_MAX_STEPS: "40"
+  WORKSPACE_DIR: /workspace
+  # Commands run inside this pod when set to "host"; the pod is then the sandbox. Keep "off" unless needed.
+  COMMAND_RUNNER: "off"
+  # Set by the overlay to the public host name.
+  ALLOWED_HOSTS: ""
+  SEARCH_PROVIDER: ""
+  SEARXNG_URL: ""
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: tatvam-data
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 20Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: tatvam-workspace
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 50Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tatvam
+  labels:
+    app.kubernetes.io/name: tatvam
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: tatvam
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: tatvam
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 0
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: tatvam
+          image: tatvam-agent
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 3000
+          envFrom:
+            - configMapRef:
+                name: tatvam-config
+          env:
+            - name: GPU_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: tatvam-secrets
+                  key: VLLM_API_KEY
+            - name: ACCESS_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: tatvam-secrets
+                  key: ACCESS_TOKEN
+            - name: SESSION_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: tatvam-secrets
+                  key: SESSION_SECRET
+            - name: GITHUB_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: tatvam-secrets
+                  key: GITHUB_TOKEN
+                  optional: true
+            - name: BRAVE_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: tatvam-secrets
+                  key: BRAVE_API_KEY
+                  optional: true
+            - name: TAVILY_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: tatvam-secrets
+                  key: TAVILY_API_KEY
+                  optional: true
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: "2"
+              memory: 2Gi
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            initialDelaySeconds: 20
+            periodSeconds: 30
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: workspace
+              mountPath: /workspace
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: tatvam-data
+        - name: workspace
+          persistentVolumeClaim:
+            claimName: tatvam-workspace
+        - name: tmp
+          emptyDir:
+            sizeLimit: 1Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tatvam
+spec:
+  selector:
+    app.kubernetes.io/name: tatvam
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
