@@ -29,6 +29,7 @@ Worktrees are sibling folders: `D:\Projects\red-team-worktrees\<folder>`. They a
 | `feat/m0-scaffold`     | `m0-scaffold`          | Committed locally; review pending | 16 API/topology tests, 18 web tests, 4 browser tests; Docker unverified |
 | `docs/m0-threat-model` | `m0-threat-model`      | Not started                       | Docs only                                                               |
 | `feat/policy-core`     | `policy-core`          | Not started                       | Pure policy, no infra                                                   |
+| `feat/agent-app`       | `agent-app`            | In progress                       | Internal developer agent in `apps/agent`, PLAN 1.1 carve-out; PR open   |
 
 ---
 
@@ -44,7 +45,7 @@ Worktrees are sibling folders: `D:\Projects\red-team-worktrees\<folder>`. They a
 | D6  | Off-host backup destination           | Pending                                                                                          |
 | D7  | Permitted lab and staging targets     | Pending                                                                                          |
 | D8  | Retention periods                     | Pending                                                                                          |
-| D9  | Repo visibility                       | Pushed as public on 2026-10-10 at the owner's request. Revisit before any engagement data exists |
+| D9  | Repo visibility                       | Public at the owner's request. The first push had not landed; `main` and `feat/agent-app` were pushed 2026-10-10, other branches are local only. Revisit before any engagement data exists |
 
 ---
 
@@ -65,3 +66,5 @@ Append one line per session, newest last: date, branch, what changed, what is ne
 - 2026-10-10, `feat/m0-scaffold`: Implemented scaffold foundation, dashboard, liveness API, strict safety settings, generated contracts, Alembic initialization, development services and CI. Local validation: 16 Python/topology tests (100% current API coverage), 18 web tests, 4 browser tests, build/lint/types/secret scan and real API smoke. Implementation validated locally. Docker was unavailable; MinIO distribution needs a reviewed image. Next: infrastructure review and the threat-model slice.
 
 - 2026-10-10, `feat/m0-scaffold`: Committed the foundation at the user's request. Existing validation: 38 tests passed, build/lint/types and secret checks passed; Docker runtime verification remains pending. Not pushed.
+
+- 2026-10-10, `feat/agent-app`: Added the internal developer agent (Tatvam Agent) as `apps/agent` under a new PLAN 1.1 carve-out decided by the owner. 570 unit/integration and 22 end-to-end tests pass; lint, types and production build clean. Docker image and Kubernetes manifests are statically checked only. Next: security review of the carve-out and PR. Note: the `m0-scaffold` worktree is checked out on `codex/agent-chat` with uncommitted Codex chat files; restore it to `feat/m0-scaffold` before M0 work.
