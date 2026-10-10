@@ -11,8 +11,8 @@ This plan sequences that spec. Where the two disagree, the spec wins and this pl
 
 | Item | State | Action |
 |---|---|---|
-| Remote `tatvama/red-team` | Empty, **public**, write access confirmed | Decide visibility before first push (risk R1) |
-| Local clone | `D:\Projects\red-team`, bootstrap commit on `main`, **not pushed** | Push after review |
+| Remote `tatvama/red-team` | **Public**, all branches pushed 2026-10-10 at the owner's request | Revisit visibility before any engagement data exists (risk R1) |
+| Local clone | `D:\Projects\red-team`, bootstrap on `main` | Pushed with the three slice branches |
 | Node | v24.15 | OK |
 | pnpm | Missing | `corepack enable pnpm` |
 | Python | Missing | Install `uv`, then `uv python install 3.12` |
@@ -246,7 +246,7 @@ gantt
 
 ## 8. Next actions
 
-1. Decide repo visibility (D9), then push `main` and the three bootstrap branches.
+1. Revisit repo visibility (D9) before any engagement data exists. All branches are already pushed.
 2. Install prerequisites: `uv`, Python 3.12, pnpm through corepack, Docker Desktop with WSL2.
 3. Configure branch protection and add `CODEOWNERS` with the security reviewer's GitHub handle.
 4. Start one Claude Code session per worktree: spec Prompt A in `m0-scaffold`, the M0 docs scope in `m0-threat-model`, and the policy-core scope in `policy-core`.

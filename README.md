@@ -8,6 +8,7 @@ Every target-contacting action requires an independently reviewed engagement sco
 
 - [Implementation specification](docs/spec/TATVAM_AI_RED_TEAM_IMPLEMENTATION.md)
 - [Delivery plan](docs/PLAN.md)
+- [Current status and next step](docs/STATUS.md)
 - [Agent and contributor guardrails](CLAUDE.md)
 
 ## Status

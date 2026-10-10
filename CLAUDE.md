@@ -4,6 +4,13 @@ Tatvam AI Red Team is an authorized, scope-gated security assessment platform: e
 
 - **Spec (source of truth):** `docs/spec/TATVAM_AI_RED_TEAM_IMPLEMENTATION.md`
 - **Delivery plan, worktrees, milestones:** `docs/PLAN.md`
+- **Current progress and next step:** `docs/STATUS.md`
+
+## Start and end of every session
+
+- **Start:** run the `/resume` skill. It reads `docs/STATUS.md`, syncs with GitHub, recreates missing worktrees and names the next step.
+- **New slice of work:** run `/new-slice <branch>`, for example `/new-slice feat/m1-db-schema`.
+- **End:** run `/handoff`. It updates `docs/STATUS.md`, commits and pushes, so the next session can continue.
 
 ## Non-negotiables
 
@@ -32,6 +39,8 @@ Main checkout: `D:\Projects\red-team`. Slices live in sibling folders under `D:\
 git -C /d/Projects/red-team worktree add ../red-team-worktrees/<slice> -b feat/<slice> main
 git -C /d/Projects/red-team worktree list
 ```
+
+Worktrees are local and are not stored on GitHub. On a new machine, clone into `D:\Projects\red-team` and run `/resume`, which recreates them from the branches listed in `docs/STATUS.md`.
 
 ## Commands
 
