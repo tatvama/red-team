@@ -1,0 +1,99 @@
+# Tatvam Agent + vLLM on one GPU server.
+#
+#   cp deploy/compose/.env.example deploy/compose/.env    # fill in the values
+#   docker compose -f deploy/compose/compose.gpu.yaml --env-file deploy/compose/.env up -d
+#   docker compose -f deploy/compose/compose.gpu.yaml --env-file deploy/compose/.env --profile search up -d   # with SearXNG
+#
+# The UI is published on 127.0.0.1 only. Reach it with an SSH tunnel:
+#   ssh -L 3000:127.0.0.1:3000 gpu-server   →   http://127.0.0.1:3000
+# For direct HTTPS access, put a TLS reverse proxy in front and set ALLOWED_HOSTS and ACCESS_TOKEN.
+name: tatvam
+
+services:
+  vllm:
+    image: ${VLLM_IMAGE:?Set VLLM_IMAGE to a tested vllm/vllm-openai tag}
+    restart: unless-stopped
+    ipc: host
+    command:
+      - ${VLLM_MODEL:?Set VLLM_MODEL}
+      - --host=0.0.0.0
+      - --port=8000
+      - --api-key=${VLLM_API_KEY:?Set VLLM_API_KEY}
+      - --max-model-len=${VLLM_MAX_MODEL_LEN:-65536}
+      - --gpu-memory-utilization=${VLLM_GPU_MEMORY_UTILIZATION:-0.90}
+      - --enable-auto-tool-choice
+      - --tool-call-parser=${VLLM_TOOL_PARSER:?Set VLLM_TOOL_PARSER for your model family}
+    environment:
+      HF_TOKEN: ${HF_TOKEN:-}
+    volumes:
+      - hf-cache:/root/.cache/huggingface
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: ${VLLM_GPU_COUNT:-1}
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"]
+      interval: 30s
+      timeout: 5s
+      start_period: 15m
+    # No published port: only the agent can reach the model. Egress is for model downloads.
+    networks: [internal, egress]
+
+  tatvam:
+    image: ${TATVAM_IMAGE:-tatvam-agent:0.1.0}
+    build:
+      context: ../..
+    restart: unless-stopped
+    depends_on:
+      vllm:
+        condition: service_healthy
+    environment:
+      GPU_BASE_URL: http://vllm:8000/v1
+      GPU_API_KEY: ${VLLM_API_KEY}
+      # vLLM is reachable only on the private compose network; plain HTTP stays inside it.
+      ALLOW_HTTP_MODEL_URLS: "true"
+      OLLAMA_BASE_URL: ""
+      CONTEXT_TOKENS: ${CONTEXT_TOKENS:-60000}
+      MAX_OUTPUT_TOKENS: ${MAX_OUTPUT_TOKENS:-8192}
+      WORKSPACE_DIR: /workspace
+      COMMAND_RUNNER: ${COMMAND_RUNNER:-off}
+      SEARCH_PROVIDER: ${SEARCH_PROVIDER:-}
+      SEARXNG_URL: ${SEARXNG_URL:-}
+      BRAVE_API_KEY: ${BRAVE_API_KEY:-}
+      TAVILY_API_KEY: ${TAVILY_API_KEY:-}
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+      ALLOWED_HOSTS: ${ALLOWED_HOSTS:-}
+      ACCESS_TOKEN: ${ACCESS_TOKEN:-}
+    volumes:
+      - tatvam-data:/data
+      - ${WORKSPACE_HOST_DIR:-./workspace}:/workspace
+    tmpfs:
+      - /tmp
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    ports:
+      - "127.0.0.1:3000:3000"
+    networks: [internal, egress]
+
+  searxng:
+    profiles: [search]
+    image: ${SEARXNG_IMAGE:?Set SEARXNG_IMAGE to a tested searxng/searxng tag}
+    restart: unless-stopped
+    environment:
+      SEARXNG_BASE_URL: http://searxng:8080/
+    volumes:
+      - ./searxng:/etc/searxng
+    networks: [internal, egress]
+
+networks:
+  internal:
+    internal: true
+  egress: {}
+
+volumes:
+  hf-cache: {}
+  tatvam-data: {}

@@ -1,0 +1,16 @@
+# Kubernetes with an ingress controller and cert-manager (or any TLS secret).
+#   1. Replace agent.example.com below and in ingress.yaml.
+#   2. kubectl apply -k deploy/k8s/overlays/ingress
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../base
+  - ingress.yaml
+patches:
+  - target:
+      kind: ConfigMap
+      name: tatvam-config
+    patch: |-
+      - op: replace
+        path: /data/ALLOWED_HOSTS
+        value: agent.example.com

@@ -1,0 +1,98 @@
+# Default deny, then open only what each component needs.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+# The agent: reachable on its HTTP port (narrow `ingress.from` to your ingress controller's
+# namespace if you can); may call DNS, vLLM and the public internet over HTTPS (web search,
+# web fetch, GitHub, remote MCP servers) but no private address ranges.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: tatvam
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: tatvam
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - ports:
+        - port: 3000
+  egress:
+    - to:
+        - namespaceSelector: {}
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+        - namespaceSelector: {}
+          podSelector:
+            matchLabels:
+              dns.operator.openshift.io/daemonset-dns: default
+      ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+        - port: 5353
+          protocol: UDP
+        - port: 5353
+          protocol: TCP
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: vllm
+      ports:
+        - port: 8000
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16, 100.64.0.0/10]
+      ports:
+        - port: 443
+---
+# vLLM: only the agent may call it; egress for model downloads from Hugging Face.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: vllm
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: vllm
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: tatvam
+      ports:
+        - port: 8000
+  egress:
+    - to:
+        - namespaceSelector: {}
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+        - namespaceSelector: {}
+          podSelector:
+            matchLabels:
+              dns.operator.openshift.io/daemonset-dns: default
+      ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+        - port: 5353
+          protocol: UDP
+        - port: 5353
+          protocol: TCP
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16, 100.64.0.0/10]
+      ports:
+        - port: 443

@@ -1,0 +1,22 @@
+# Tatvam Agent + vLLM. Apply an overlay, not this base directly:
+#   kubectl apply -k deploy/k8s/overlays/ingress      (Kubernetes with an ingress controller)
+#   oc apply -k deploy/k8s/overlays/openshift         (OpenShift)
+# Create the secrets first (see secret.example.yaml), and pin the vLLM image tag.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: tatvam
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: tatvam
+    includeSelectors: false
+resources:
+  - namespace.yaml
+  - tatvam.yaml
+  - vllm.yaml
+  - network-policies.yaml
+images:
+  - name: tatvam-agent
+    newName: tatvam-agent
+    newTag: "0.1.0"
+  - name: vllm/vllm-openai
+    newTag: PIN-A-TESTED-TAG

@@ -1,0 +1,33 @@
+# OpenShift: TLS Route instead of Ingress, and no fixed UIDs so the restricted-v2 SCC can assign
+# them (the image keeps every writable path group-0 writable for that).
+#   1. Replace agent.apps.example.com below and in route.yaml.
+#   2. oc apply -k deploy/k8s/overlays/openshift
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../base
+  - route.yaml
+patches:
+  - target:
+      kind: ConfigMap
+      name: tatvam-config
+    patch: |-
+      - op: replace
+        path: /data/ALLOWED_HOSTS
+        value: agent.apps.example.com
+  - target:
+      kind: Deployment
+      name: tatvam
+    patch: |-
+      - op: remove
+        path: /spec/template/spec/securityContext/runAsUser
+      - op: remove
+        path: /spec/template/spec/securityContext/runAsGroup
+      - op: remove
+        path: /spec/template/spec/securityContext/fsGroup
+  - target:
+      kind: Namespace
+      name: tatvam
+    patch: |-
+      - op: remove
+        path: /metadata/labels/pod-security.kubernetes.io~1enforce

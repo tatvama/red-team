@@ -1,0 +1,17 @@
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: tatvam
+  annotations:
+    # Agent replies stream for minutes.
+    haproxy.router.openshift.io/timeout: 3600s
+spec:
+  host: agent.apps.example.com
+  to:
+    kind: Service
+    name: tatvam
+  port:
+    targetPort: http
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
