@@ -5,6 +5,7 @@ import { defaultWorkspaceDir } from "@/lib/server/config";
 import * as db from "@/lib/server/db";
 import { GitError, createTaskWorktree, sharedBaseline } from "@/lib/server/git";
 import { failure, guard, ndjsonResponse, readJson } from "@/lib/server/http";
+import { chooseModel, getRouterConfig } from "@/lib/server/router";
 
 export const runtime = "nodejs";
 
@@ -18,11 +19,19 @@ export async function POST(request: Request) {
     return failure("This message is too large or could not be read.", 400);
   }
   if (!parsed.success) return failure("Check your message and model, then try again.", 400);
-  const { conversationId, content, provider, model, permissionMode, isolation } = parsed.data;
+  const { conversationId, content, permissionMode, isolation, useRouter } = parsed.data;
 
   let conversation = conversationId ? db.getConversation(conversationId) : null;
   if (conversationId && !conversation) return failure("This conversation no longer exists.", 404);
   const isNew = !conversation;
+  // With the router on, conversations keep the model they started with (so a canary is sticky).
+  const existing =
+    useRouter && conversation?.provider && conversation.model ? { provider: conversation.provider, model: conversation.model } : null;
+  const { provider, model } = chooseModel(getRouterConfig(), {
+    requested: { provider: parsed.data.provider, model: parsed.data.model },
+    existing,
+    useRouter: useRouter ?? false,
+  });
   if (!conversation) {
     const title = titleFrom(content ?? "");
     const created = db.createConversation({ title, provider, model, permissionMode });

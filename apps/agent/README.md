@@ -21,6 +21,12 @@ It thinks out loud, asks before it acts, edits files, runs commands, searches th
 | **Utilities** | `calculator`, `get_current_time`. |
 | **Models** | Any OpenAI-compatible server: Ollama locally, vLLM or similar on a GPU server. Models without tool support fall back to plain chat. |
 | **Deployment** | Docker image, a GPU compose file with vLLM, and Kubernetes manifests with an OpenShift overlay. Remote access uses signed sessions. See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md). |
+| **Feedback and review** | Thumbs up or down on any reply or tool call, write the reply you wanted instead, and approve or exclude conversations for training on the Training page. |
+| **Datasets** | Export approved conversations as SFT data (OpenAI chat format, tool calls included) and DPO preference pairs from your corrections. Secrets are always redacted, PII optionally, with a stable held-out split. |
+| **Evaluations** | Run a fixed task suite (tool use, coding, research, instructions, safety) against any model, with an optional judge model, and compare pass rates and tool-call validity. |
+| **Distillation** | Let a larger teacher model answer your prompts or past questions to produce extra training conversations. |
+| **Fine-tuning kits** | Generate a ready-to-run folder for your GPU server: TRL or Axolotl, LoRA, QLoRA or DPO, with merge, vLLM serve and register scripts. See [docs/TRAINING.md](docs/TRAINING.md). |
+| **Model registry and router** | Track base models and fine-tunes with their lineage and latest eval, send a canary share of new conversations to a candidate, then promote or retire it. |
 
 ## Quick start
 
@@ -78,6 +84,18 @@ Commands are off until you choose a runner:
 - `COMMAND_RUNNER=host`. Commands run on this machine in the workspace folder, through PowerShell on Windows and bash elsewhere, with API keys stripped from the environment. Keep the permission mode on **Ask** when you use this.
 
 Set `WORKSPACE_DIR` to the project you want the agent to work on. Never point it at the Tatvam folder itself, which holds `.env.local` and the database. Host mode is not a sandbox: a command runs with your user's rights and can read any file you can.
+
+## Train your own model
+
+Tatvam can turn your day-to-day use into a model tuned for your work. Everything except the training run happens on the **Training** page:
+
+1. Rate replies and write corrections as you work, then approve good conversations in **Review**.
+2. Export a dataset in **Datasets** (SFT and DPO JSONL, redacted, with a held-out split).
+3. Measure your current model with the eval suite in **Evaluations**.
+4. Generate a kit in **Fine-tuning**, copy it to your GPU server and run `bash run.sh`, then merge and serve it with the included vLLM script.
+5. Register it in **Models**, evaluate it against the baseline, send it a canary share of traffic through the router, and promote or retire it.
+
+Tatvam never starts training jobs itself: you run the kit on your GPU server. The full guide, with method choice, hyperparameters and GPU memory rules of thumb, is in [docs/TRAINING.md](docs/TRAINING.md).
 
 ## Safety model
 
@@ -138,4 +156,3 @@ Create `data/mcp.json` (or point `MCP_CONFIG` at a file). It uses the same forma
 - Browser automation tool for testing web apps
 - Multiple workspaces and users with roles
 - CLI and VS Code clients on the same API
-- Export approved conversations as fine-tuning data

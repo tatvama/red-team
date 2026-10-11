@@ -38,8 +38,15 @@ export class ModelError extends Error {
   constructor(
     message: string,
     readonly kind: "unconfigured" | "unreachable" | "rejected" | "tools_unsupported" | "interrupted",
+    /** HTTP status when the server answered with an error. */
+    readonly status?: number,
   ) {
     super(message);
+  }
+
+  /** True when another model might succeed: the server is down or failed on its side. */
+  get retryable(): boolean {
+    return this.kind === "unreachable" || this.kind === "unconfigured" || (this.status !== undefined && this.status >= 500);
   }
 }
 
@@ -282,10 +289,11 @@ export const streamCompletion: CompletionFn = async (request) => {
     const body = await readLimited(response, 20_000).catch(() => "");
     if (request.tools.length && response.status === 400 && looksLikeToolsUnsupported(body))
       throw new ModelError("This model does not support tools.", "tools_unsupported");
-    if (response.status === 404) throw new ModelError(`Model "${request.model}" was not found on the server.`, "rejected");
+    if (response.status === 404)
+      throw new ModelError(`Model "${request.model}" was not found on the server.`, "rejected", 404);
     if (response.status === 401 || response.status === 403)
-      throw new ModelError("The model server rejected the API key. Check GPU_API_KEY.", "rejected");
-    throw new ModelError(`The model server returned HTTP ${response.status}.`, "rejected");
+      throw new ModelError("The model server rejected the API key. Check GPU_API_KEY.", "rejected", response.status);
+    throw new ModelError(`The model server returned HTTP ${response.status}.`, "rejected", response.status);
   }
   if (!response.body || !response.headers.get("content-type")?.includes("text/event-stream")) {
     await response.body?.cancel();

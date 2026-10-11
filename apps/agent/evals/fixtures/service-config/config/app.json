@@ -1,0 +1,6 @@
+{
+  "name": "inventory-service",
+  "port": 8417,
+  "logLevel": "info",
+  "retryLimit": 3
+}

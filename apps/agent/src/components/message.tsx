@@ -2,9 +2,11 @@
 
 import { History } from "lucide-react";
 import { memo, useState } from "react";
-import type { AssistantMessageView, CheckpointView, SubagentView, UserMessageView } from "@/lib/contract";
+import type { AssistantMessageView, CheckpointView, FeedbackView, SubagentView, UserMessageView } from "@/lib/contract";
+import { findFeedback } from "@/lib/client/feedback";
 import { type ApprovalDecision, ApprovalCard } from "./approval-card";
 import { BrandMark } from "./brand";
+import { type FeedbackHandler, MessageFeedback } from "./feedback-controls";
 import { Markdown } from "./markdown";
 import { ThinkingBlock } from "./thinking-block";
 import { ToolCard } from "./tool-card";
@@ -69,7 +71,15 @@ type AssistantMessageProps = {
   subagentsByCall?: ReadonlyMap<string, SubagentView[]>;
   onRestore?: (checkpoint: CheckpointView) => void;
   restoreDisabled?: boolean;
+  /** Feedback on this reply and its tool calls. */
+  feedback?: readonly FeedbackView[];
+  /** Enables rating and corrections once the reply is finished. */
+  onFeedback?: FeedbackHandler;
+  /** Shows which model wrote the reply (when the router picks models). */
+  showModel?: boolean;
 };
+
+const noFeedback: readonly FeedbackView[] = [];
 
 export const AssistantMessage = memo(function AssistantMessage({
   message,
@@ -81,8 +91,14 @@ export const AssistantMessage = memo(function AssistantMessage({
   subagentsByCall,
   onRestore,
   restoreDisabled,
+  feedback = noFeedback,
+  onFeedback,
+  showModel = false,
 }: AssistantMessageProps) {
   const thinking = streaming && message.content === "" && message.toolCalls.length === 0;
+  const finished =
+    !streaming && message.toolCalls.every((call) => call.status !== "awaiting_approval" && call.status !== "running");
+  const showFeedback = finished && onFeedback !== undefined && message.content.trim() !== "";
   return (
     <div className="message message--assistant">
       <div className="message__avatar" aria-hidden="true">
@@ -105,12 +121,24 @@ export const AssistantMessage = memo(function AssistantMessage({
                   onRestore={onRestore}
                   restoreDisabled={restoreDisabled}
                   subagents={subagentsByCall?.get(call.id)}
+                  messageId={onFeedback && finished ? message.id : undefined}
+                  feedback={findFeedback(feedback, message.id, call.id)}
+                  onFeedback={onFeedback}
                 />
               ),
             )}
           </div>
         )}
         {message.interrupted && <p className="message__note">Stopped</p>}
+        {showFeedback && (
+          <MessageFeedback
+            messageId={message.id}
+            content={message.content}
+            feedback={findFeedback(feedback, message.id, null)}
+            onFeedback={onFeedback}
+            model={showModel ? message.model : null}
+          />
+        )}
       </div>
     </div>
   );

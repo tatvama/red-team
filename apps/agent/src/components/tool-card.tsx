@@ -19,7 +19,7 @@ import {
   Undo2,
 } from "lucide-react";
 import { memo, useId, useState } from "react";
-import type { CheckpointView, SubagentView, ToolCallStatus, ToolCallView, ToolRisk } from "@/lib/contract";
+import type { CheckpointView, FeedbackView, SubagentView, ToolCallStatus, ToolCallView, ToolRisk } from "@/lib/contract";
 import { languageFromPath } from "@/lib/client/format";
 import {
   commandLine,
@@ -30,6 +30,7 @@ import {
   stringArg,
   type ToolArguments,
 } from "@/lib/client/tool-args";
+import { FeedbackError, type FeedbackHandler, ToolFeedback } from "./feedback-controls";
 import { CodeBlock, Markdown } from "./markdown";
 import { SubagentGrid } from "./subagent-cards";
 
@@ -194,7 +195,13 @@ type ToolCardProps = {
   restoreDisabled?: boolean;
   /** Sub-agents this call started (`delegate_tasks` only). */
   subagents?: SubagentView[];
+  /** The reply this call belongs to; with `onFeedback`, a finished call can be rated. */
+  messageId?: string;
+  feedback?: FeedbackView | null;
+  onFeedback?: FeedbackHandler;
 };
+
+const finishedStatuses: ReadonlySet<ToolCallStatus> = new Set(["ok", "error", "denied"]);
 
 export const ToolCard = memo(function ToolCard({
   call,
@@ -202,8 +209,13 @@ export const ToolCard = memo(function ToolCard({
   onRestore,
   restoreDisabled = false,
   subagents,
+  messageId,
+  feedback = null,
+  onFeedback,
 }: ToolCardProps) {
   const [expanded, setExpanded] = useState(false);
+  const [feedbackError, setFeedbackError] = useState<string | null>(null);
+  const canRate = messageId !== undefined && onFeedback !== undefined && finishedStatuses.has(call.status);
   const detailsId = useId();
   const canRestore =
     checkpoint !== undefined &&
@@ -212,7 +224,14 @@ export const ToolCard = memo(function ToolCard({
     (call.risk === "write" || call.risk === "execute");
   return (
     <>
-      <div className={clsx("tool-card", `tool-card--${call.status}`, expanded && "tool-card--expanded")}>
+      <div
+        className={clsx(
+          "tool-card",
+          `tool-card--${call.status}`,
+          expanded && "tool-card--expanded",
+          feedback?.rating && "tool-card--rated",
+        )}
+      >
         <div className="tool-card__head">
           <button
             type="button"
@@ -243,7 +262,23 @@ export const ToolCard = memo(function ToolCard({
               <Undo2 size={15} aria-hidden="true" />
             </button>
           )}
+          {canRate && (
+            <span className="tool-card__rating">
+              <ToolFeedback
+                messageId={messageId}
+                toolCallId={call.id}
+                feedback={feedback}
+                onFeedback={onFeedback}
+                onError={setFeedbackError}
+              />
+            </span>
+          )}
         </div>
+        {feedbackError && (
+          <div className="tool-card__feedback-error">
+            <FeedbackError message={feedbackError} onDismiss={() => setFeedbackError(null)} />
+          </div>
+        )}
         {expanded && (
           <div id={detailsId} className="tool-card__details">
             <ToolDetails call={call} />

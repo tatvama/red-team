@@ -31,6 +31,8 @@ WORKDIR /app
 COPY --from=build --chown=10001:0 /app/.next/standalone ./
 COPY --from=build --chown=10001:0 /app/.next/static ./.next/static
 COPY --from=build --chown=10001:0 /app/scripts/mock-llm.mjs ./scripts/mock-llm.mjs
+# Built-in evaluation suites and their fixtures (override the location with EVALS_DIR).
+COPY --from=build --chown=10001:0 /app/evals ./evals
 
 ENV NODE_ENV=production \
     NEXT_TELEMETRY_DISABLED=1 \

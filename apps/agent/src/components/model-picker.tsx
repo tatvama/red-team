@@ -1,9 +1,9 @@
 "use client";
 
 import clsx from "clsx";
-import { Check, ChevronDown, Cpu, RotateCcw } from "lucide-react";
-import { type ModelConnection, type Provider, providerNames } from "@/lib/contract";
-import type { ModelSelection } from "@/lib/client/agent-state";
+import { Check, ChevronDown, Cpu, RotateCcw, Route } from "lucide-react";
+import { type ModelConnection, type Provider, providerNames, type RouterConfig } from "@/lib/contract";
+import { type ModelChoice, type ModelSelection, routerAvailable } from "@/lib/client/agent-state";
 import { onMenuKeyDown, usePopover } from "./use-popover";
 
 export const providers: Provider[] = ["ollama", "gpu"];
@@ -39,14 +39,29 @@ export function ConnectionDot({ connection }: { connection: ModelConnection | nu
 
 type ModelPickerProps = {
   connections: Record<Provider, ModelConnection | null>;
-  selection: ModelSelection | null;
+  selection: ModelChoice | ModelSelection | null;
   onSelect: (selection: ModelSelection) => void;
   onRecheck: () => void;
+  /** The server's model router; "Auto (router)" is offered while it is enabled. */
+  router?: RouterConfig | null;
+  onSelectAuto?: () => void;
 };
 
-export function ModelPicker({ connections, selection, onSelect, onRecheck }: ModelPickerProps) {
+/** One line on what Auto does with the current router settings. */
+export function routerSummary(router: RouterConfig): string {
+  if (!router.main) return "The router has no main model.";
+  const canary = router.canary
+    ? ` ${router.canary.percent}% of new tasks try ${router.canary.model.model}.`
+    : "";
+  return `The server picks the model: ${router.main.model} by default.${canary}`;
+}
+
+export function ModelPicker({ connections, selection, onSelect, onRecheck, router = null, onSelectAuto }: ModelPickerProps) {
   const { open, setOpen, close, triggerRef, panelRef } = usePopover();
   const checking = providers.some((provider) => connections[provider] === null);
+  const auto = selection !== null && "auto" in selection && selection.auto;
+  const offerAuto = routerAvailable(router) && onSelectAuto !== undefined;
+  const label = auto ? "Auto (router)" : selection?.model;
 
   return (
     <div className="picker">
@@ -56,11 +71,12 @@ export function ModelPicker({ connections, selection, onSelect, onRecheck }: Mod
         className="picker__trigger"
         aria-haspopup="menu"
         aria-expanded={open}
-        aria-label={selection ? `Model: ${selection.model}. Change model` : "Choose a model"}
+        aria-label={label ? `Model: ${label}. Change model` : "Choose a model"}
+        title={auto && router ? routerSummary(router) : undefined}
         onClick={() => setOpen(!open)}
       >
-        <Cpu size={15} aria-hidden="true" />
-        <span className="picker__value">{selection ? selection.model : checking ? "Checking models…" : "No model"}</span>
+        {auto ? <Route size={15} aria-hidden="true" /> : <Cpu size={15} aria-hidden="true" />}
+        <span className="picker__value">{auto ? "Auto" : (label ?? (checking ? "Checking models…" : "No model"))}</span>
         <ChevronDown size={14} aria-hidden="true" />
       </button>
       {open && (
@@ -71,6 +87,29 @@ export function ModelPicker({ connections, selection, onSelect, onRecheck }: Mod
           aria-label="Models"
           onKeyDown={(event) => onMenuKeyDown(event, close)}
         >
+          {offerAuto && (
+            <div role="group" aria-label="Router" className="model-menu__group">
+              <button
+                type="button"
+                role="menuitemradio"
+                aria-checked={auto}
+                className="menu-item menu-item--rich"
+                onClick={() => {
+                  onSelectAuto();
+                  close();
+                }}
+              >
+                <span className="model-menu__auto-icon">
+                  <Route size={15} aria-hidden="true" />
+                </span>
+                <span className="menu-item__stack">
+                  <span className="menu-item__label">Auto (router)</span>
+                  <span className="menu-item__description">{routerSummary(router)}</span>
+                </span>
+                {auto && <Check size={15} aria-hidden="true" className="menu-item__check" />}
+              </button>
+            </div>
+          )}
           {providers.map((provider) => {
             const connection = connections[provider];
             return (
@@ -81,7 +120,7 @@ export function ModelPicker({ connections, selection, onSelect, onRecheck }: Mod
                 </div>
                 {connection?.state === "ready" ? (
                   connection.models.map((model) => {
-                    const checked = selection?.provider === provider && selection.model === model;
+                    const checked = !auto && selection?.provider === provider && selection.model === model;
                     return (
                       <button
                         key={model}
