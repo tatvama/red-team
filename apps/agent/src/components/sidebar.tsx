@@ -1,7 +1,8 @@
 "use client";
 
 import clsx from "clsx";
-import { Ellipsis, LogOut, PanelLeftClose, PanelLeftOpen, Pencil, Plus, Settings, Trash2, X } from "lucide-react";
+import { Ellipsis, GraduationCap, LogOut, PanelLeftClose, PanelLeftOpen, Pencil, Plus, Settings, Trash2, X } from "lucide-react";
+import Link from "next/link";
 import { type CSSProperties, type KeyboardEvent, useEffect, useRef, useState } from "react";
 import { type ConversationSummary, type ModelConnection, type Provider, providerNames } from "@/lib/contract";
 import { groupConversations } from "@/lib/client/format";
@@ -305,6 +306,10 @@ export function Sidebar({
         </div>
 
         <div className="sidebar__footer">
+          <Link href="/training" className="sidebar__settings" aria-label="Training">
+            <GraduationCap size={17} aria-hidden="true" />
+            <span className="sidebar__settings-label">Training</span>
+          </Link>
           <button type="button" className="sidebar__settings" onClick={onOpenSettings} aria-label="Settings">
             <Settings size={17} aria-hidden="true" />
             <span className="sidebar__settings-label">Settings</span>

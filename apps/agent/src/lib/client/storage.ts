@@ -15,6 +15,8 @@ export type Preferences = {
   sidebarCollapsed: boolean;
   /** Isolation for new tasks in a git workspace: the last choice made in the composer. */
   isolation: Isolation;
+  /** "Auto (router)" was chosen in the model picker; applies while the server's router is enabled. */
+  useRouter: boolean;
 };
 
 export const defaultPreferences: Preferences = {
@@ -23,6 +25,7 @@ export const defaultPreferences: Preferences = {
   permissionMode: "ask",
   sidebarCollapsed: false,
   isolation: "shared",
+  useRouter: false,
 };
 
 const STORAGE_KEY = "tatvam.preferences.v1";
@@ -48,6 +51,7 @@ function parsePreferences(raw: string | null): Preferences {
       permissionMode: mode.success ? mode.data : defaultPreferences.permissionMode,
       sidebarCollapsed: record.sidebarCollapsed === true,
       isolation: isolation.success ? isolation.data : defaultPreferences.isolation,
+      useRouter: record.useRouter === true,
     };
   } catch {
     return defaultPreferences;

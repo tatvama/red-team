@@ -3,8 +3,20 @@ import type {
   AgentRequest,
   ApprovalRequest,
   ConversationDetail,
+  ConversationKind,
   ConversationSummary,
+  DatasetExportRequest,
+  DatasetExportView,
   DefaultWorkspaceView,
+  DistillJobView,
+  DistillRequest,
+  EvalRunRequest,
+  EvalRunView,
+  EvalSuiteView,
+  FeedbackRequest,
+  FeedbackView,
+  FinetuneKitRequest,
+  FinetuneKitView,
   GitAction,
   GitActionResult,
   GitChanges,
@@ -12,11 +24,17 @@ import type {
   McpServerView,
   ModelConnection,
   Provider,
+  RegisteredModel,
+  registerModelSchema,
   RestoreCheckpointRequest,
   RestoreCheckpointResult,
+  RouterConfig,
   SessionView,
   SettingsUpdate,
   SettingsView,
+  TrainingConversationView,
+  TrainingStatus,
+  updateModelSchema,
 } from "@/lib/contract";
 import { navigateTo } from "./navigation";
 
@@ -90,6 +108,9 @@ async function requestJson<T>(path: string, init?: RequestOptions): Promise<T> {
 
 const postJson = <T>(path: string, body: unknown): Promise<T> =>
   requestJson(path, { method: "POST", body: JSON.stringify(body) });
+
+const putJson = <T>(path: string, body: unknown): Promise<T> =>
+  requestJson(path, { method: "PUT", body: JSON.stringify(body) });
 
 async function requestStream(path: string, body: unknown, signal: AbortSignal): Promise<ReadableStream<Uint8Array>> {
   const response = await request(path, { method: "POST", body: JSON.stringify(body), signal });
@@ -190,4 +211,126 @@ export async function login(token: string): Promise<void> {
 
 export async function logout(): Promise<void> {
   await request("/api/auth/logout", { method: "POST", redirectOnUnauthorized: false });
+}
+
+// ── Training loop ───────────────────────────────────────────────────────────
+
+/** Saves one rating or correction; resolves with every feedback entry of the conversation. */
+export async function saveFeedback(conversationId: string, body: FeedbackRequest): Promise<FeedbackView[]> {
+  const result = await putJson<{ feedback: FeedbackView[] }>(`${conversationPath(conversationId)}/feedback`, body);
+  return result.feedback;
+}
+
+export async function saveTrainingStatus(conversationId: string, trainingStatus: TrainingStatus): Promise<TrainingStatus> {
+  const result = await putJson<{ trainingStatus: TrainingStatus }>(`${conversationPath(conversationId)}/training`, {
+    trainingStatus,
+  });
+  return result.trainingStatus;
+}
+
+export function fetchRouterConfig(): Promise<RouterConfig> {
+  return requestJson("/api/router");
+}
+
+/** The server answers 400 when the router is enabled without a main model. */
+export function saveRouterConfig(config: RouterConfig): Promise<RouterConfig> {
+  return putJson("/api/router", config);
+}
+
+export type TrainingFilter = { status: TrainingStatus | null; kind: ConversationKind | null };
+
+/** The review queue. A null filter value means "any". */
+export async function fetchTrainingConversations(filter: TrainingFilter): Promise<TrainingConversationView[]> {
+  const params = new URLSearchParams();
+  if (filter.status) params.set("status", filter.status);
+  if (filter.kind) params.set("kind", filter.kind);
+  const search = params.toString();
+  const query = search ? `?${search}` : "";
+  const body = await requestJson<{ conversations: TrainingConversationView[] }>(`/api/training/conversations${query}`);
+  return body.conversations;
+}
+
+const exportPath = (id: string) => `/api/training/exports/${encodeURIComponent(id)}`;
+
+export async function fetchExports(): Promise<DatasetExportView[]> {
+  return (await requestJson<{ exports: DatasetExportView[] }>("/api/training/exports")).exports;
+}
+
+export function createExport(body: DatasetExportRequest): Promise<DatasetExportView> {
+  return postJson("/api/training/exports", body);
+}
+
+export async function deleteExport(id: string): Promise<void> {
+  await request(exportPath(id), { method: "DELETE" });
+}
+
+export const exportFileUrl = (id: string, name: string) => `${exportPath(id)}/files/${encodeURIComponent(name)}`;
+
+const evalRunPath = (id: string) => `/api/evals/runs/${encodeURIComponent(id)}`;
+
+export async function fetchEvalSuites(): Promise<EvalSuiteView[]> {
+  return (await requestJson<{ suites: EvalSuiteView[] }>("/api/evals/suites")).suites;
+}
+
+export async function fetchEvalRuns(): Promise<EvalRunView[]> {
+  return (await requestJson<{ runs: EvalRunView[] }>("/api/evals/runs")).runs;
+}
+
+export function fetchEvalRun(id: string): Promise<EvalRunView> {
+  return requestJson(evalRunPath(id));
+}
+
+export function startEvalRun(body: EvalRunRequest): Promise<EvalRunView> {
+  return postJson("/api/evals/runs", body);
+}
+
+export function cancelEvalRun(id: string): Promise<EvalRunView> {
+  return postJson(`${evalRunPath(id)}/cancel`, {});
+}
+
+const distillPath = (id: string) => `/api/training/distill/${encodeURIComponent(id)}`;
+
+export async function fetchDistillJobs(): Promise<DistillJobView[]> {
+  return (await requestJson<{ jobs: DistillJobView[] }>("/api/training/distill")).jobs;
+}
+
+export function startDistill(body: DistillRequest): Promise<DistillJobView> {
+  return postJson("/api/training/distill", body);
+}
+
+export function cancelDistill(id: string): Promise<DistillJobView> {
+  return postJson(`${distillPath(id)}/cancel`, {});
+}
+
+export async function fetchKits(): Promise<FinetuneKitView[]> {
+  return (await requestJson<{ kits: FinetuneKitView[] }>("/api/training/kits")).kits;
+}
+
+export function createKit(body: FinetuneKitRequest): Promise<FinetuneKitView> {
+  return postJson("/api/training/kits", body);
+}
+
+export const kitFileUrl = (id: string, name: string) =>
+  `/api/training/kits/${encodeURIComponent(id)}/files/${encodeURIComponent(name)}`;
+
+export type RegisterModelRequest = z.infer<typeof registerModelSchema>;
+export type UpdateModelRequest = z.infer<typeof updateModelSchema>;
+
+const registryPath = (id: string) => `/api/models/registry/${encodeURIComponent(id)}`;
+
+export async function fetchRegistry(): Promise<RegisteredModel[]> {
+  return (await requestJson<{ models: RegisteredModel[] }>("/api/models/registry")).models;
+}
+
+/** The server answers 409 when this provider and model are already registered. */
+export function registerModel(body: RegisterModelRequest): Promise<RegisteredModel> {
+  return postJson("/api/models/registry", body);
+}
+
+export function updateModel(id: string, body: UpdateModelRequest): Promise<RegisteredModel> {
+  return requestJson(registryPath(id), { method: "PATCH", body: JSON.stringify(body) });
+}
+
+export async function deleteModel(id: string): Promise<void> {
+  await request(registryPath(id), { method: "DELETE" });
 }

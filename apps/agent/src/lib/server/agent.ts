@@ -21,6 +21,7 @@ import { workspaceInfo } from "./git";
 import { fitToBudget, parseArgs, summarizeCall, wireTools } from "./history";
 import { ModelError, streamCompletion, type CompletionFn, type CompletionResult, type WireMessage, type WireTool } from "./llm";
 import { currentMcpTools, getMcpTools } from "./mcp/manager";
+import { fallbackFor, getRouterConfig, subagentModel } from "./router";
 import { builtinTools } from "./tools";
 import { truncate, type AgentRuntime, type ToolDefinition, type ToolOutput } from "./tools/types";
 
@@ -169,6 +170,9 @@ export function conversationDetail(id: string, tools: ToolDefinition[] = knownTo
       .listSubagentRuns(id)
       .map((run) => (run.status === "running" && !active ? { ...run, status: "stopped" as const, activity: "Stopped" } : run)),
     running: active,
+    kind: conversation.kind,
+    trainingStatus: conversation.trainingStatus,
+    feedback: db.listFeedback(id),
   };
 }
 
@@ -260,7 +264,7 @@ export function toWire(messages: db.StoredMessage[]): WireMessage[] {
   return wire;
 }
 
-type Context = RunOptions & { complete: CompletionFn; tools: ToolDefinition[] };
+type Context = RunOptions & { complete: CompletionFn; tools: ToolDefinition[]; kind: db.ConversationRow["kind"] };
 
 /**
  * Runs one tool call. File edits and commands are checkpointed first so the user can roll back.
@@ -272,7 +276,8 @@ async function executeTool(
   input: unknown,
   meta: { toolCallId: string | null; signal: AbortSignal; runtime?: AgentRuntime },
 ): Promise<ToolOutput> {
-  if (tool.risk === "write" || tool.risk === "execute") {
+  // Evaluation and distillation runs work in throwaway folders, so they skip checkpoints.
+  if (ctx.kind === "chat" && (tool.risk === "write" || tool.risk === "execute")) {
     const checkpoint = await createCheckpoint({
       conversationId: ctx.conversationId,
       workspace: workspaceDir(),
@@ -324,9 +329,10 @@ async function resolveCall(ctx: Context, messageId: string, call: db.StoredToolC
   }
 
   emit({ type: "tool_call", messageId, call: toolCallView(call, tool, "running") });
+  const subagents = subagentModel(getRouterConfig(), { provider: ctx.provider, model: ctx.model });
   const runtime: AgentRuntime = {
-    provider: ctx.provider,
-    model: ctx.model,
+    provider: subagents.provider,
+    model: subagents.model,
     permissionMode: ctx.permissionMode,
     messageId,
     callId: call.id,
@@ -400,10 +406,10 @@ async function modelTurn(ctx: Context): Promise<"tools" | "complete" | "stopped"
       emit({ type: "token", messageId: assistant.id, text: delta.text });
     }
   };
+  let target = { provider: ctx.provider, model: ctx.model };
   const complete = (tools: WireTool[]) =>
     ctx.complete({
-      provider: ctx.provider,
-      model: ctx.model,
+      ...target,
       messages: [{ role: "system", content: system }, ...fitted.messages],
       tools,
       maxTokens: config.maxOutputTokens,
@@ -411,15 +417,27 @@ async function modelTurn(ctx: Context): Promise<"tools" | "complete" | "stopped"
       signal,
       onDelta,
     });
+  const attempt = async () => {
+    try {
+      return await complete(toolsJson);
+    } catch (error) {
+      if (!(error instanceof ModelError && error.kind === "tools_unsupported" && toolsJson.length)) throw error;
+      onDelta({ kind: "content", text: TOOLS_UNSUPPORTED_NOTE });
+      return complete([]);
+    }
+  };
 
   let result: CompletionResult;
   try {
     try {
-      result = await complete(toolsJson);
+      result = await attempt();
     } catch (error) {
-      if (!(error instanceof ModelError && error.kind === "tools_unsupported" && toolsJson.length)) throw error;
-      onDelta({ kind: "content", text: TOOLS_UNSUPPORTED_NOTE });
-      result = await complete([]);
+      // Nothing streamed yet and the primary is down: let the router's fallback model answer.
+      const fallback = fallbackFor(getRouterConfig(), target);
+      if (!(error instanceof ModelError && error.retryable && fallback && !content && !reasoning)) throw error;
+      target = fallback;
+      onDelta({ kind: "content", text: `_The primary model was unavailable, so the fallback model \`${fallback.model}\` answered._\n\n` });
+      result = await attempt();
     }
   } catch (error) {
     if (!content && !reasoning) db.deleteMessage(assistant.id);
@@ -435,7 +453,7 @@ async function modelTurn(ctx: Context): Promise<"tools" | "complete" | "stopped"
   const toolCalls = result.toolCalls.map((call) => ({ id: call.id, name: call.function.name, arguments: call.function.arguments }));
   if (result.finishReason === "length" && !toolCalls.length)
     onDelta({ kind: "content", text: "\n\n_Reached the output limit. Say “continue” to keep going._" });
-  db.updateAssistantMessage(assistant.id, { content, reasoning, toolCalls, interrupted: false });
+  db.updateAssistantMessage(assistant.id, { content, reasoning, toolCalls, interrupted: false, model: target.model });
   return toolCalls.length ? "tools" : "complete";
 }
 
@@ -454,6 +472,7 @@ export async function runAgent(options: RunOptions): Promise<void> {
     ...options,
     complete: options.deps?.complete ?? streamCompletion,
     tools: options.deps?.tools ?? (await resolveTools()),
+    kind: conversation?.kind ?? "chat",
   };
   return withWorkspace(conversation?.workspacePath ?? null, () => loop(ctx));
 }

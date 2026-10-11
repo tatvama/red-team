@@ -2,10 +2,12 @@
 
 import { ArrowDown, CircleAlert, Play, RotateCcw, X } from "lucide-react";
 import { type ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import type { CheckpointView, MessageView, SubagentView } from "@/lib/contract";
+import type { CheckpointView, FeedbackView, MessageView, SubagentView } from "@/lib/contract";
 import type { InlineError } from "@/lib/client/agent-state";
+import { feedbackByMessage } from "@/lib/client/feedback";
 import type { ApprovalDecision } from "./approval-card";
 import { BrandMark } from "./brand";
+import type { FeedbackHandler } from "./feedback-controls";
 import { AssistantMessage, UserMessage } from "./message";
 
 const STICK_THRESHOLD_PX = 72;
@@ -26,8 +28,16 @@ type TranscriptProps = {
   /** Opens the restore dialog; `allowRewind` offers rewinding the conversation as well. */
   onRestore?: (checkpoint: CheckpointView, allowRewind: boolean) => void;
   restoreDisabled?: boolean;
+  feedback?: FeedbackView[];
+  /** Enables ratings and corrections on finished replies. */
+  onFeedback?: FeedbackHandler;
+  /** Labels each reply with the model that wrote it. */
+  showModels?: boolean;
+  /** Hides Retry, for conversations that cannot be continued. */
+  readOnly?: boolean;
 };
 
+const noFeedback: FeedbackView[] = [];
 const noCheckpoints: CheckpointView[] = [];
 const noSubagents: SubagentView[] = [];
 
@@ -49,6 +59,10 @@ export function Transcript({
   subagents = noSubagents,
   onRestore,
   restoreDisabled = false,
+  feedback = noFeedback,
+  onFeedback,
+  showModels = false,
+  readOnly = false,
 }: TranscriptProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const stickToBottom = useRef(true);
@@ -77,6 +91,8 @@ export function Transcript({
     }
     return byCall;
   }, [subagents]);
+
+  const feedbackLookup = useMemo(() => feedbackByMessage(feedback), [feedback]);
 
   const rewind = useCallback((checkpoint: CheckpointView) => onRestore?.(checkpoint, true), [onRestore]);
   const restoreFiles = useCallback((checkpoint: CheckpointView) => onRestore?.(checkpoint, false), [onRestore]);
@@ -149,6 +165,9 @@ export function Transcript({
                 subagentsByCall={subagentsByCall}
                 onRestore={onRestore ? restoreFiles : undefined}
                 restoreDisabled={restoreDisabled}
+                feedback={feedbackLookup.get(message.id)}
+                onFeedback={onFeedback}
+                showModel={showModels}
               />
             );
           })}
@@ -160,7 +179,7 @@ export function Transcript({
               </>
             )}
           </div>
-          {stepLimitReached && !running && (
+          {stepLimitReached && !running && !readOnly && (
             <div className="banner banner--info">
               <span>Paused after reaching the step limit for one turn.</span>
               <button type="button" className="button button--secondary button--small" onClick={onRetry}>
@@ -173,7 +192,7 @@ export function Transcript({
             <div className="banner banner--error" role="alert">
               <CircleAlert size={16} aria-hidden="true" className="banner__icon" />
               <span className="banner__text">{error.message}</span>
-              {error.retryable && (
+              {error.retryable && !readOnly && (
                 <button
                   type="button"
                   className="button button--secondary button--small"

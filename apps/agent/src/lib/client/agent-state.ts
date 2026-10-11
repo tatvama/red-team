@@ -3,17 +3,22 @@ import type {
   AssistantMessageView,
   CheckpointView,
   ConversationDetail,
+  ConversationKind,
   ConversationSummary,
+  FeedbackView,
   GitChanges,
   MessageView,
   ModelConnection,
   PlanItem,
   Provider,
+  RouterConfig,
   SubagentView,
   ToolCallView,
+  TrainingStatus,
   UserMessageView,
   WorkspaceInfo,
 } from "@/lib/contract";
+import { findFeedback, replaceFeedback } from "./feedback";
 import type { Preferences } from "./storage";
 
 export type Phase = "idle" | "loading" | "streaming";
@@ -51,6 +56,12 @@ export type AgentState = {
   changes: GitChanges | null;
   /** Why the last changes request failed. */
   changesError: string | null;
+  /** `eval` and `distill` conversations were made by background jobs and open read-only. */
+  kind: ConversationKind;
+  /** Null until the conversation is loaded from the server. */
+  trainingStatus: TrainingStatus | null;
+  /** Ratings and corrections on this conversation's replies and tool calls. */
+  feedback: FeedbackView[];
   conversations: ConversationSummary[];
   connections: Record<Provider, ModelConnection | null>;
 };
@@ -75,7 +86,23 @@ export type AgentAction =
   | { type: "conversation_deleted"; conversationId: string }
   | { type: "connection_loaded"; connection: ModelConnection }
   | { type: "changes_loaded"; conversationId: string; changes: GitChanges }
-  | { type: "changes_failure"; conversationId: string; message: string };
+  | { type: "changes_failure"; conversationId: string; message: string }
+  /**
+   * Sets (or with `entry` null removes) the feedback on one reply or tool call. With `ifCurrent`, applies
+   * only while the stored entry is still that one, so reverting a failed save never undoes a newer change.
+   */
+  | {
+      type: "feedback_entry";
+      conversationId: string;
+      messageId: string;
+      toolCallId: string | null;
+      entry: FeedbackView | null;
+      ifCurrent?: FeedbackView | null;
+    }
+  /** The canonical list the server returned after a save. */
+  | { type: "feedback_loaded"; conversationId: string; feedback: FeedbackView[] }
+  /** With `ifCurrent`, applies only while the status is still that value. */
+  | { type: "training_status"; conversationId: string; trainingStatus: TrainingStatus; ifCurrent?: TrainingStatus };
 
 const emptyConversation = {
   conversationId: null,
@@ -93,6 +120,9 @@ const emptyConversation = {
   running: false,
   changes: null,
   changesError: null,
+  kind: "chat",
+  trainingStatus: null,
+  feedback: [],
 } satisfies Omit<AgentState, "runId" | "conversations" | "connections">;
 
 export function createInitialState(conversationId: string | null): AgentState {
@@ -233,6 +263,9 @@ export function agentReducer(state: AgentState, action: AgentAction): AgentState
         checkpoints: conversation.checkpoints,
         subagents: conversation.subagents,
         running: conversation.running,
+        kind: conversation.kind ?? "chat",
+        trainingStatus: conversation.trainingStatus ?? "unreviewed",
+        feedback: conversation.feedback ?? [],
         phase: "idle",
         loadError: null,
         pendingUserMessageId: null,
@@ -300,6 +333,21 @@ export function agentReducer(state: AgentState, action: AgentAction): AgentState
     case "changes_failure":
       if (action.conversationId !== state.conversationId) return state;
       return { ...state, changesError: action.message };
+    case "feedback_entry": {
+      if (action.conversationId !== state.conversationId) return state;
+      if (action.ifCurrent !== undefined) {
+        const current = findFeedback(state.feedback, action.messageId, action.toolCallId);
+        if (current !== action.ifCurrent) return state;
+      }
+      return { ...state, feedback: replaceFeedback(state.feedback, action.messageId, action.toolCallId, action.entry) };
+    }
+    case "feedback_loaded":
+      if (action.conversationId !== state.conversationId) return state;
+      return { ...state, feedback: action.feedback };
+    case "training_status":
+      if (action.conversationId !== state.conversationId) return state;
+      if (action.ifCurrent !== undefined && state.trainingStatus !== action.ifCurrent) return state;
+      return { ...state, trainingStatus: action.trainingStatus };
   }
 }
 
@@ -374,4 +422,25 @@ export function resolveModel(
     if (first) return { provider: candidate, model: first };
   }
   return null;
+}
+
+/** The model a run uses. `auto` means "Auto (router)": the request carries `useRouter` and names the router's main model. */
+export type ModelChoice = ModelSelection & { auto: boolean };
+
+/** The router can pick models only while it is enabled and has a main model. */
+export function routerAvailable(router: RouterConfig | null): router is RouterConfig & { main: ModelSelection } {
+  return router !== null && router.enabled && router.main !== null;
+}
+
+/** Like `resolveModel`, but honours "Auto (router)" while the server's router can serve it. */
+export function resolveChoice(
+  preferences: Pick<Preferences, "provider" | "model" | "useRouter">,
+  connections: Record<Provider, ModelConnection | null>,
+  router: RouterConfig | null,
+): ModelChoice | null {
+  if (preferences.useRouter && routerAvailable(router)) {
+    return { provider: router.main.provider, model: router.main.model, auto: true };
+  }
+  const selection = resolveModel(preferences, connections);
+  return selection ? { ...selection, auto: false } : null;
 }
