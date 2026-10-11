@@ -6,7 +6,7 @@ import { type ComponentProps, isValidElement, memo, type ReactNode, useEffect, u
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 
-export function CopyButton({ text, label = "Copy" }: { text: string; label?: string }) {
+export function CopyButton({ text, label = "Copy", ariaLabel }: { text: string; label?: string; ariaLabel?: string }) {
   const [copied, setCopied] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
   useEffect(() => () => clearTimeout(timer.current), []);
@@ -23,7 +23,7 @@ export function CopyButton({ text, label = "Copy" }: { text: string; label?: str
   }
 
   return (
-    <button type="button" className="copy-button" onClick={copy} aria-label={copied ? "Copied" : `${label} code`}>
+    <button type="button" className="copy-button" onClick={copy} aria-label={copied ? "Copied" : (ariaLabel ?? `${label} code`)}>
       {copied ? <Check size={14} aria-hidden="true" /> : <Copy size={14} aria-hidden="true" />}
       <span>{copied ? "Copied" : label}</span>
     </button>

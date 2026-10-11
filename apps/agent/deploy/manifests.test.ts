@@ -104,5 +104,6 @@ describe("Dockerfile", () => {
     expect(dockerfile).toContain('ENTRYPOINT ["/usr/bin/tini", "--"]');
     expect(dockerfile).toContain("/api/health");
     expect(dockerfile).toContain("COMMAND_RUNNER=off");
+    expect(dockerfile).toContain("/app/evals ./evals");
   });
 });

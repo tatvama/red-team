@@ -67,4 +67,4 @@ Training a frontier model from scratch costs far more than any single GPU server
    - Evaluate before and after on a fixed task set. Fine-tuning can quietly damage tool calling.
 4. **Serve the result** with vLLM (merged weights, or the base model plus `--enable-lora`) and select it in Tatvam. The app does not change.
 
-Conversations are stored in `DATA_DIR/tatvam.db`. Exporting reviewed conversations as fine-tuning data is on the roadmap.
+Conversations are stored in `DATA_DIR/tatvam.db`. The Training page exports reviewed conversations as fine-tuning data and generates ready-to-run kits; see [TRAINING.md](TRAINING.md) for the whole loop.

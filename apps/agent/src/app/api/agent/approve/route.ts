@@ -2,6 +2,7 @@ import { approvalRequestSchema } from "@/lib/contract";
 import { finishRun, runAgent, tryStartRun, unresolvedCalls, worktreeMissing } from "@/lib/server/agent";
 import * as db from "@/lib/server/db";
 import { failure, guard, ndjsonResponse, readJson } from "@/lib/server/http";
+import { chooseModel, getRouterConfig } from "@/lib/server/router";
 
 export const runtime = "nodejs";
 
@@ -17,10 +18,17 @@ export async function POST(request: Request) {
     return failure("This approval could not be read.", 400);
   }
   if (!parsed.success) return failure("This approval is not valid.", 400);
-  const { conversationId: id, callId, decision, provider, model, permissionMode } = parsed.data;
+  const { conversationId: id, callId, decision, permissionMode, useRouter } = parsed.data;
 
   const conversation = db.getConversation(id);
   if (!conversation) return failure("This conversation no longer exists.", 404);
+  const existing =
+    useRouter && conversation.provider && conversation.model ? { provider: conversation.provider, model: conversation.model } : null;
+  const { provider, model } = chooseModel(getRouterConfig(), {
+    requested: { provider: parsed.data.provider, model: parsed.data.model },
+    existing,
+    useRouter: useRouter ?? false,
+  });
   if (worktreeMissing(conversation))
     return failure("This task's worktree was discarded. Start a new task to keep working.", 409);
   if (!tryStartRun(id)) return failure("This task is already running.", 409);
